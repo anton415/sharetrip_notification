@@ -2,7 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -30,14 +31,36 @@ type CreateNotificationResponse struct {
 func (s *Server) createNotification(c *fiber.Ctx) error {
 	var request CreateNotificationRequest
 	if err := c.BodyParser(&request); err != nil {
-		return c.SendStatus(fiber.StatusBadRequest)
+		return writeErrorResponse(
+			c,
+			fiber.StatusBadRequest,
+			errorCodeValidation,
+			"invalid request body",
+		)
 	}
 
-	if request.RecipientID == "" ||
-		request.Type == "" ||
-		len(request.Payload) == 0 ||
-		!json.Valid(request.Payload) {
-		return c.SendStatus(fiber.StatusBadRequest)
+	switch {
+	case strings.TrimSpace(request.RecipientID) == "":
+		return writeErrorResponse(
+			c,
+			fiber.StatusBadRequest,
+			errorCodeValidation,
+			"recipient_id is required",
+		)
+	case strings.TrimSpace(request.Type) == "":
+		return writeErrorResponse(
+			c,
+			fiber.StatusBadRequest,
+			errorCodeValidation,
+			"type is required",
+		)
+	case len(request.Payload) == 0:
+		return writeErrorResponse(
+			c,
+			fiber.StatusBadRequest,
+			errorCodeValidation,
+			"payload is required",
+		)
 	}
 
 	notification, err := s.notifications.CreateNotification(
@@ -49,8 +72,19 @@ func (s *Server) createNotification(c *fiber.Ctx) error {
 		},
 	)
 	if err != nil {
-		log.Printf("create notification: %v", err)
-		return c.SendStatus(fiber.StatusInternalServerError)
+		s.logger.ErrorContext(
+			c.UserContext(),
+			"create notification failed",
+			slog.Any("error", err),
+			slog.String("recipient_id", request.RecipientID),
+			slog.String("notification_type", request.Type),
+		)
+		return writeErrorResponse(
+			c,
+			fiber.StatusInternalServerError,
+			errorCodeInternal,
+			"internal server error",
+		)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(newCreateNotificationResponse(notification))

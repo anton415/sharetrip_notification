@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,11 +25,30 @@ func TestCreateNotificationBadRequest(t *testing.T) {
 	app := newTestApp(pool)
 
 	tests := []struct {
-		name string
-		body string
+		name            string
+		body            string
+		expectedMessage string
 	}{
-		{name: "malformed JSON", body: `{"recipient_id":`},
-		{name: "missing payload", body: `{"recipient_id":"client-123","type":"trip_published"}`},
+		{
+			name:            "malformed JSON",
+			body:            `{"recipient_id":`,
+			expectedMessage: "invalid request body",
+		},
+		{
+			name:            "missing recipient id",
+			body:            `{"type":"trip_published","payload":{"trip_id":"trip-456"}}`,
+			expectedMessage: "recipient_id is required",
+		},
+		{
+			name:            "missing type",
+			body:            `{"recipient_id":"client-123","payload":{"trip_id":"trip-456"}}`,
+			expectedMessage: "type is required",
+		},
+		{
+			name:            "missing payload",
+			body:            `{"recipient_id":"client-123","type":"trip_published"}`,
+			expectedMessage: "payload is required",
+		},
 	}
 
 	for _, test := range tests {
@@ -41,9 +62,10 @@ func TestCreateNotificationBadRequest(t *testing.T) {
 			}
 			defer response.Body.Close()
 
-			if response.StatusCode != fiber.StatusBadRequest {
-				t.Fatalf("expected status %d, got %d", fiber.StatusBadRequest, response.StatusCode)
-			}
+			assertErrorResponse(t, response, fiber.StatusBadRequest, errorResponse{
+				Code:    "VALIDATION_ERROR",
+				Message: test.expectedMessage,
+			})
 		})
 	}
 }
@@ -65,9 +87,10 @@ func TestCreateNotificationInternalServerError(t *testing.T) {
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != fiber.StatusInternalServerError {
-		t.Fatalf("expected status %d, got %d", fiber.StatusInternalServerError, response.StatusCode)
-	}
+	assertErrorResponse(t, response, fiber.StatusInternalServerError, errorResponse{
+		Code:    "INTERNAL_ERROR",
+		Message: "internal server error",
+	})
 }
 
 func TestCreateNotificationCreated(t *testing.T) {
@@ -162,9 +185,29 @@ func newClosedPool(t *testing.T) *pgxpool.Pool {
 func newTestApp(pool *pgxpool.Pool) *fiber.App {
 	notificationRepo := repo.NewPostgresNotificationRepository(pool)
 	notificationService := service.NewNotificationService(notificationRepo)
-	server := NewServer(notificationService)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := NewServer(notificationService, logger)
 
 	app := fiber.New()
 	server.RegisterRoutes(app)
 	return app
+}
+
+func assertErrorResponse(t *testing.T, response *http.Response, expectedStatus int, expected errorResponse) {
+	t.Helper()
+
+	if response.StatusCode != expectedStatus {
+		t.Fatalf("expected status %d, got %d", expectedStatus, response.StatusCode)
+	}
+	if contentType := response.Header.Get(fiber.HeaderContentType); contentType != fiber.MIMEApplicationJSON {
+		t.Errorf("expected content type %q, got %q", fiber.MIMEApplicationJSON, contentType)
+	}
+
+	var actual errorResponse
+	if err := json.NewDecoder(response.Body).Decode(&actual); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if actual != expected {
+		t.Errorf("expected error response %+v, got %+v", expected, actual)
+	}
 }

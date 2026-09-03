@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -15,33 +17,43 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	if err := run(logger); err != nil {
+		logger.Error("notification service stopped", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+func run(logger *slog.Logger) error {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL is required")
+		return errors.New("DATABASE_URL is required")
 	}
 
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("create PostgreSQL connection pool: %w", err)
 	}
 	defer pool.Close()
 
 	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	if err := pool.Ping(pingCtx); err != nil {
-		log.Fatal(err)
+	err = pool.Ping(pingCtx)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("ping PostgreSQL: %w", err)
 	}
 
-	log.Println("connected to PostgreSQL")
+	logger.InfoContext(ctx, "connected to PostgreSQL")
 
 	notificationRepo := repo.NewPostgresNotificationRepository(pool)
 	notificationService := service.NewNotificationService(notificationRepo)
-	server := api.NewServer(notificationService)
+	server := api.NewServer(notificationService, logger)
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	server.RegisterRoutes(app)
 
 	addr := os.Getenv("HTTP_ADDR")
@@ -49,8 +61,10 @@ func main() {
 		addr = ":8081"
 	}
 
-	log.Printf("notification service is listening on %s", addr)
+	logger.InfoContext(ctx, "notification service is listening", slog.String("address", addr))
 	if err := app.Listen(addr); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
+
+	return nil
 }

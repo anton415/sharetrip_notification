@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -24,16 +24,36 @@ type GetNotificationByIDResponse struct {
 func (s *Server) getNotificationByID(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		return c.SendStatus(fiber.StatusBadRequest)
+		return writeErrorResponse(
+			c,
+			fiber.StatusBadRequest,
+			errorCodeValidation,
+			"notification id must be a valid UUID",
+		)
 	}
 
 	notification, err := s.notifications.GetNotificationByID(c.UserContext(), id)
 	if errors.Is(err, domain.ErrNotificationNotFound) {
-		return c.SendStatus(fiber.StatusNotFound)
+		return writeErrorResponse(
+			c,
+			fiber.StatusNotFound,
+			errorCodeNotFound,
+			"notification not found",
+		)
 	}
 	if err != nil {
-		log.Printf("get notification by id: %v", err)
-		return c.SendStatus(fiber.StatusInternalServerError)
+		s.logger.ErrorContext(
+			c.UserContext(),
+			"get notification by id failed",
+			slog.Any("error", err),
+			slog.String("notification_id", id.String()),
+		)
+		return writeErrorResponse(
+			c,
+			fiber.StatusInternalServerError,
+			errorCodeInternal,
+			"internal server error",
+		)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(newGetNotificationByIDResponse(notification))

@@ -15,6 +15,7 @@
 В первую версию входят:
 
 - отдельный репозиторий `sharetrip_notification`;
+- `Makefile` как основная система сборки и интерфейс команд проекта;
 - ядро сервиса;
 - REST API из двух методов;
 - хранение уведомлений;
@@ -28,13 +29,56 @@
 ## Минимальный стек
 
 - Go;
+- Make;
 - REST API;
 - PostgreSQL.
 
 Выбор HTTP-фреймворка, драйвера PostgreSQL и инструмента миграций является
 технической реализацией, а не дополнительным требованием урока.
 
+## Команды проекта
+
+Сборка, тестирование, запуск и полный набор проверок выполняются через
+`Makefile`:
+
+```bash
+make build
+make test
+DATABASE_URL='...' make run
+make check
+```
+
+Миграции выполняются тем же интерфейсом; для каждой команды требуется строка
+подключения к PostgreSQL в `DATABASE_URL`:
+
+```bash
+DATABASE_URL='...' make migrate-up
+DATABASE_URL='...' make migrate-status
+DATABASE_URL='...' make migrate-down
+```
+
 ## REST API
+
+### Формат ошибок
+
+Все предусмотренные контрактом ошибки возвращаются как JSON с единым набором
+полей:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "recipient_id is required"
+}
+```
+
+`code` предназначен для программной обработки, а `message` сообщает клиенту
+конкретную причину ошибки. Используются следующие коды:
+
+| Код | HTTP-статус | Значение |
+| --- | --- | --- |
+| `VALIDATION_ERROR` | `400 Bad Request` | Ошибка тела или обязательного поля запроса |
+| `NOT_FOUND` | `404 Not Found` | Уведомление не найдено |
+| `INTERNAL_ERROR` | `500 Internal Server Error` | Внутренняя ошибка сервиса |
 
 ### Создать уведомление
 
@@ -72,13 +116,13 @@ Response `201 Created`:
 
 Ошибки:
 
-| Код | Причина |
-| --- | --- |
-| `400 Bad Request` | Некорректное тело запроса |
-| `500 Internal Server Error` | Внутренняя ошибка сервиса |
-
-Урок задаёт только HTTP-статусы и причины. Формат JSON-тела ошибки не является
-частью контракта этого урока.
+| HTTP-статус | `code` | `message` | Причина |
+| --- | --- | --- | --- |
+| `400 Bad Request` | `VALIDATION_ERROR` | `invalid request body` | Тело запроса нельзя разобрать как JSON |
+| `400 Bad Request` | `VALIDATION_ERROR` | `recipient_id is required` | Не задан `recipient_id` |
+| `400 Bad Request` | `VALIDATION_ERROR` | `type is required` | Не задан `type` |
+| `400 Bad Request` | `VALIDATION_ERROR` | `payload is required` | Не задан `payload` |
+| `500 Internal Server Error` | `INTERNAL_ERROR` | `internal server error` | Внутренняя ошибка сервиса |
 
 ### Получить уведомление
 
@@ -103,13 +147,11 @@ Response `200 OK`:
 
 Ошибки:
 
-| Код | Причина |
-| --- | --- |
-| `404 Not Found` | Уведомление не найдено |
-| `500 Internal Server Error` | Внутренняя ошибка сервиса |
-
-Поведение для идентификатора неправильного формата в уроке отдельно не задано,
-поэтому оно не является самостоятельным критерием этой версии.
+| HTTP-статус | `code` | `message` | Причина |
+| --- | --- | --- | --- |
+| `400 Bad Request` | `VALIDATION_ERROR` | `notification id must be a valid UUID` | `id` имеет неправильный формат |
+| `404 Not Found` | `NOT_FOUND` | `notification not found` | Уведомление не найдено |
+| `500 Internal Server Error` | `INTERNAL_ERROR` | `internal server error` | Внутренняя ошибка сервиса |
 
 ## Схема хранения
 
@@ -141,9 +183,13 @@ CREATE TABLE notifications (
 1. Миграция создаёт таблицу `notifications` по указанной схеме.
 2. Корректный `POST /notifications` сохраняет уведомление и возвращает
    `201 Created` с полями из контракта.
-3. Некорректное тело POST-запроса возвращает `400 Bad Request`.
-4. Внутренняя ошибка создания возвращает `500 Internal Server Error`.
+3. Ошибка в POST-запросе возвращает `400 Bad Request`, код
+   `VALIDATION_ERROR` и конкретное сообщение из контракта.
+4. Внутренняя ошибка создания возвращает `500 Internal Server Error` с кодом
+   `INTERNAL_ERROR`.
 5. `GET /notifications/{id}` возвращает существующее уведомление с `200 OK`.
-6. Запрос отсутствующего уведомления возвращает `404 Not Found`.
-7. Внутренняя ошибка получения возвращает `500 Internal Server Error`.
+6. Запрос отсутствующего уведомления возвращает `404 Not Found` с кодом
+   `NOT_FOUND`.
+7. Внутренняя ошибка получения возвращает `500 Internal Server Error` с кодом
+   `INTERNAL_ERROR`.
 8. В реализации нет адаптеров внешних каналов доставки.

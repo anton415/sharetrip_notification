@@ -92,9 +92,27 @@ func TestGetNotificationByIDNotFound(t *testing.T) {
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != fiber.StatusNotFound {
-		t.Fatalf("expected status %d, got %d", fiber.StatusNotFound, response.StatusCode)
+	assertErrorResponse(t, response, fiber.StatusNotFound, errorResponse{
+		Code:    "NOT_FOUND",
+		Message: "notification not found",
+	})
+}
+
+func TestGetNotificationByIDBadRequest(t *testing.T) {
+	pool := newClosedPool(t)
+	app := newTestApp(pool)
+
+	request := httptest.NewRequest(http.MethodGet, "/notifications/not-a-uuid", nil)
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatalf("perform request: %v", err)
 	}
+	defer response.Body.Close()
+
+	assertErrorResponse(t, response, fiber.StatusBadRequest, errorResponse{
+		Code:    "VALIDATION_ERROR",
+		Message: "notification id must be a valid UUID",
+	})
 }
 
 func TestGetNotificationByIDInternalServerError(t *testing.T) {
@@ -108,9 +126,10 @@ func TestGetNotificationByIDInternalServerError(t *testing.T) {
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != fiber.StatusInternalServerError {
-		t.Fatalf("expected status %d, got %d", fiber.StatusInternalServerError, response.StatusCode)
-	}
+	assertErrorResponse(t, response, fiber.StatusInternalServerError, errorResponse{
+		Code:    "INTERNAL_ERROR",
+		Message: "internal server error",
+	})
 }
 
 func newIntegrationPool(t *testing.T) *pgxpool.Pool {
