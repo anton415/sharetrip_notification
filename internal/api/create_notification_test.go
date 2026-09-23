@@ -21,8 +21,7 @@ import (
 )
 
 func TestCreateNotificationBadRequest(t *testing.T) {
-	pool := newClosedPool(t)
-	app := newTestApp(pool)
+	t.Parallel()
 
 	tests := []struct {
 		name            string
@@ -53,6 +52,10 @@ func TestCreateNotificationBadRequest(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			pool := newClosedPool(t)
+			app := newTestApp(pool)
+
 			request := httptest.NewRequest(http.MethodPost, "/notifications", strings.NewReader(test.body))
 			request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
@@ -60,7 +63,7 @@ func TestCreateNotificationBadRequest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("perform request: %v", err)
 			}
-			defer response.Body.Close()
+			defer closeResponseBody(t, response.Body)
 
 			assertErrorResponse(t, response, fiber.StatusBadRequest, errorResponse{
 				Code:    "VALIDATION_ERROR",
@@ -71,6 +74,8 @@ func TestCreateNotificationBadRequest(t *testing.T) {
 }
 
 func TestCreateNotificationInternalServerError(t *testing.T) {
+	t.Parallel()
+
 	pool := newClosedPool(t)
 	app := newTestApp(pool)
 
@@ -85,7 +90,7 @@ func TestCreateNotificationInternalServerError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	assertErrorResponse(t, response, fiber.StatusInternalServerError, errorResponse{
 		Code:    "INTERNAL_ERROR",
@@ -94,6 +99,8 @@ func TestCreateNotificationInternalServerError(t *testing.T) {
 }
 
 func TestCreateNotificationCreated(t *testing.T) {
+	t.Parallel()
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL is not set")
@@ -122,7 +129,7 @@ func TestCreateNotificationCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	if response.StatusCode != fiber.StatusCreated {
 		t.Fatalf("expected status %d, got %d", fiber.StatusCreated, response.StatusCode)
@@ -191,6 +198,14 @@ func newTestApp(pool *pgxpool.Pool) *fiber.App {
 	app := fiber.New()
 	server.RegisterRoutes(app)
 	return app
+}
+
+func closeResponseBody(t *testing.T, body io.Closer) {
+	t.Helper()
+
+	if err := body.Close(); err != nil {
+		t.Errorf("close response body: %v", err)
+	}
 }
 
 func assertErrorResponse(t *testing.T, response *http.Response, expectedStatus int, expected errorResponse) {

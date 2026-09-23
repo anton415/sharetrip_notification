@@ -19,6 +19,8 @@ import (
 )
 
 func TestTripPublishedProcessing(t *testing.T) {
+	t.Parallel()
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL is not set")
@@ -34,6 +36,8 @@ func TestTripPublishedProcessing(t *testing.T) {
 
 	for _, workers := range []int{1, 8} {
 		t.Run(fmt.Sprintf("%d concurrent deliveries and a retry", workers), func(t *testing.T) {
+			t.Parallel()
+
 			event := events.TripPublished{
 				EventID: uuid.NewString(), EventType: "TripPublished", TripID: uuid.NewString(),
 				DriverID: uuid.NewString(), CompanyID: uuid.NewString(), OccurredAt: time.Now().UTC(),
@@ -76,6 +80,8 @@ func TestTripPublishedProcessing(t *testing.T) {
 	}
 
 	t.Run("notification failure rolls back event and allows retry", func(t *testing.T) {
+		t.Parallel()
+
 		eventID := uuid.New()
 		notification := domain.Notification{
 			ID: uuid.New(), RecipientID: uuid.NewString(), Type: "trip_published",

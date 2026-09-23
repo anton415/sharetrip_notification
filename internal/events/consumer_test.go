@@ -14,6 +14,8 @@ import (
 )
 
 func TestConsumerCommits(t *testing.T) {
+	t.Parallel()
+
 	brokers := os.Getenv("KAFKA_BROKERS")
 	if brokers == "" {
 		t.Skip("KAFKA_BROKERS is not set")
@@ -48,6 +50,8 @@ func TestConsumerCommits(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			topic := "notification-test-" + uuid.NewString()

@@ -17,6 +17,8 @@ import (
 )
 
 func TestGetNotificationByIDOK(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	pool := newIntegrationPool(t)
 	storage := repo.NewPostgresNotificationRepository(pool)
@@ -44,7 +46,7 @@ func TestGetNotificationByIDOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	if response.StatusCode != fiber.StatusOK {
 		t.Fatalf("expected status %d, got %d", fiber.StatusOK, response.StatusCode)
@@ -81,6 +83,8 @@ func TestGetNotificationByIDOK(t *testing.T) {
 }
 
 func TestGetNotificationByIDNotFound(t *testing.T) {
+	t.Parallel()
+
 	pool := newIntegrationPool(t)
 	app := newTestApp(pool)
 	missingID := uuid.New()
@@ -90,7 +94,7 @@ func TestGetNotificationByIDNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	assertErrorResponse(t, response, fiber.StatusNotFound, errorResponse{
 		Code:    "NOT_FOUND",
@@ -99,6 +103,8 @@ func TestGetNotificationByIDNotFound(t *testing.T) {
 }
 
 func TestGetNotificationByIDBadRequest(t *testing.T) {
+	t.Parallel()
+
 	pool := newClosedPool(t)
 	app := newTestApp(pool)
 
@@ -107,7 +113,7 @@ func TestGetNotificationByIDBadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	assertErrorResponse(t, response, fiber.StatusBadRequest, errorResponse{
 		Code:    "VALIDATION_ERROR",
@@ -116,6 +122,8 @@ func TestGetNotificationByIDBadRequest(t *testing.T) {
 }
 
 func TestGetNotificationByIDInternalServerError(t *testing.T) {
+	t.Parallel()
+
 	pool := newClosedPool(t)
 	app := newTestApp(pool)
 
@@ -124,7 +132,7 @@ func TestGetNotificationByIDInternalServerError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perform request: %v", err)
 	}
-	defer response.Body.Close()
+	defer closeResponseBody(t, response.Body)
 
 	assertErrorResponse(t, response, fiber.StatusInternalServerError, errorResponse{
 		Code:    "INTERNAL_ERROR",
